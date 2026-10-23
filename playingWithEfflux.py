@@ -178,19 +178,21 @@ soilFluxPro = (soilFluxPro.merge(metadataDF, "inner", left_on="DATE_TIME initial
 
 """Now, I'm going to do a regression between the fluxes from the smart chamber
 and from SoilFLuxPro"""
+co2fluxCopy = co2fluxDF.copy()
+co2fluxCopy.dateTime = pd.to_datetime(co2fluxCopy.dateTime)
 combinedCO2fluxes = soilFluxPro.merge(co2fluxDF, "inner", ["idTag", "dateTime", "plotType", "plotNumber", "collar", "soilArea", "totalVolume", "offset"])
 CO2regression = scipy.stats.linregress(combinedCO2fluxes.F_o, combinedCO2fluxes.FCO2_DRY)
 minCO2flux = co2fluxDF.F_o.min()
 maxCO2flux = co2fluxDF.F_o.max()
 minSoilFluxProCO2flux = (CO2regression.slope * minCO2flux) + CO2regression.intercept
 maxSoilFluxProCO2flux = (CO2regression.slope * maxCO2flux) + CO2regression.intercept
-CO2regressionFigure = plt.figure("SoilFluxPro vs smart chamber", (20, 20))
+CO2regressionFigure = plt.figure("SoilFluxPro vs smart chamber", (10, 10))
 CO2regressionSubplot = CO2regressionFigure.add_subplot(111)
 CO2regressionSubplot.set_xlabel("Smart chamber flux")
 CO2regressionSubplot.set_ylabel("SoilFluxPro flux")
 CO2regressionSubplot.grid()
 CO2regressionScatter = CO2regressionSubplot.scatter(combinedCO2fluxes.F_o, combinedCO2fluxes.FCO2_DRY, label="Data")
-CO2regressionLine = CO2regressionSubplot.plot([minCO2flux, maxCO2flux], [minSoilFluxProCO2flux, maxSoilFluxProCO2flux], label="Regression of the data")
+CO2regressionLine = CO2regressionSubplot.plot([minCO2flux, maxCO2flux], [minSoilFluxProCO2flux, maxSoilFluxProCO2flux], label="Regression of the data, y = 1.00529x + 0.00416, R2 = 0.9998")
 max1to1 = (1 * maxCO2flux) + 0
 oneToOneLine = CO2regressionSubplot.plot([minCO2flux, maxCO2flux], [minCO2flux, max1to1], label="1:1 relationship")
 CO2regressionSubplot.legend()
@@ -207,9 +209,35 @@ fluxes20261005 = (co2fluxDF.filter(["idTag", "plotType", "plotNumber", "collar",
                   .rename(columns={"F_o": "methaneFlux", "r2": "methaneFlux_Rsquared"})
                   .filter(["idTag", "dateTime", "soilArea", "offset", "plotType", "plotNumber", "collar", "CO2flux", "CO2flux_Rsquared", "methaneFlux", "methaneFlux_Rsquared"])
                   )
+
+"""I'll also export the combined smart chamber & SoilFluxPro fluxes for this
+date. I'll also export the linear regression figure comparing fluxes from both
+sources."""
+cleanFolder = october2026effluxFolder/"Clean"
+combinedFluxesPath = cleanFolder/"2026-10-05 - SoilFluxPro vs smart chamber.xlsx"
+note = [["This Excel file contains CO2 flux data collected on October 5, 2026."],
+        ["It contains flux data as calculated by the smart chamber as well"],
+        ["as fluxes that SoilFluxPro calculated. Fluxes are in"],
+        ["micromole per square meter per second."]]
+if os.path.exists(combinedFluxesPath) is False:
+    wb = openpyxl.Workbook()
+    readMe = wb.active
+    readMe.title = "ReadMe"
+    for line in note:
+        readMe.append(line)
+    dataTab = wb.create_sheet("Data")
+    dataTab.append(combinedCO2fluxes.columns.tolist())
+    combinedCO2fluxesList = combinedCO2fluxes.to_numpy().tolist()
+    for row in combinedCO2fluxesList:
+        dataTab.append(row)
+    wb.save(combinedFluxesPath)
+figurePath = cleanFolder/"2026-10-05 - SoilFluxPro vs smart chamber.png"
+if os.path.exists(figurePath) is False:
+    CO2regressionFigure.savefig(figurePath, dpi=400, bbox_inches="tight")
+
 # %%
 # Exporting the flux data from October 5, 2026
-cleanFolder = october2026effluxFolder/"Clean"
+
 fluxes20261005path = cleanFolder/"October 5, 2026 fluxes.xlsx"
 
 note1 = ["This Excel file contains methane and CO2 efflux data taken on",
@@ -239,8 +267,8 @@ note1 = ["This Excel file contains methane and CO2 efflux data taken on",
          "tried adjusting these 2 flux values on SoilFluxPro, likely because",
          "of the fluxes being so close to 0.",
          "",
-         "Fluxes for both CO2 and methane have units of micromole per square",
-         "meter per second. Soil area is in centimeter square while offset",
+         "Fluxes for both CO2 are in either micromole (for CO2) or nanomole (for methane)",
+         "per square meter per second. Soil area is in centimeter square while offset",
          "is in centimeter. For each observation, I included its ID tag",
          "(the name you assign each observation prior to starting measurement)",
          "and the date and time when the measurement was taken. The smart",
