@@ -28,37 +28,49 @@ def extractData(jsonDictionary):
 
     Returns
     -------
-    A dataframe containing the metadata and a dataframe containing either only
+    1. A dataframe containing the metadata and a dataframe containing either only
     CO2 flux data (if the data was collected by an 870) or both CO2 and methane
     fluxes (if the data was collected by a 7810)
+
+    2. A dataframe containing the metadata
+
+    3. A dataframe containing the measurements that were forcefully interrupted
     """
     dataset = jsonDictionary["datasets"]
     metadata = []
     co2fluxData = []
     methaneFluxData = []
+    interruptedIDtags = []
     for observation in dataset:
         idTag = list(observation.keys())[0]
         observationLowerLevel = observation[idTag]
         remark = observationLowerLevel["remark"]
         reps = observationLowerLevel["reps"]
-        rep1 = reps["REP_1"]
-        header = rep1["header"]
-        gasAnalyzer = header["InstrumentModel"]
-        footer = rep1["footer"]
-        
-        # Extracting metadata
-        metadata.append([idTag, remark, gasAnalyzer, header["Area"], header["Offset"], header["ChamVolume"], header["IrgaVolume"], header["TotalVolume"], header["Date"], footer["P_o"], footer["T_o"], footer["W_o"]])
-
-        # Extracting flux data
-        fluxes = footer["fluxes"]
-        if gasAnalyzer.endswith("870"):
-            co2flux = fluxes[0]
-        elif gasAnalyzer.endswith("7810"):
-            methaneFlux = fluxes[0]
-            if methaneFlux["name"] == "ch4":
-                methaneFluxData.append([idTag, methaneFlux["F_o"], methaneFlux["slope"], methaneFlux["r2"]])
-            co2flux = fluxes[1]
-        co2fluxData.append([idTag, co2flux["F_o"], co2flux["slope"], co2flux["r2"]])
+        if bool(reps) == True:
+            """A dictionary evaluates to True if it's not empty and to False
+            if it's empty. This dictionary is empty is the person operating
+            the tablet controlling the Smart Chamber decided to stop the
+            measurement process on the tablet."""
+            rep1 = reps["REP_1"]
+            header = rep1["header"]
+            gasAnalyzer = header["InstrumentModel"]
+            footer = rep1["footer"]
+            
+            # Extracting metadata
+            metadata.append([idTag, remark, gasAnalyzer, header["Area"], header["Offset"], header["ChamVolume"], header["IrgaVolume"], header["TotalVolume"], header["Date"], footer["P_o"], footer["T_o"], footer["W_o"]])
+    
+            # Extracting flux data
+            fluxes = footer["fluxes"]
+            if gasAnalyzer.endswith("870"):
+                co2flux = fluxes[0]
+            elif gasAnalyzer.endswith("7810"):
+                methaneFlux = fluxes[0]
+                if methaneFlux["name"] == "ch4":
+                    methaneFluxData.append([idTag, methaneFlux["F_o"], methaneFlux["slope"], methaneFlux["r2"]])
+                co2flux = fluxes[1]
+            co2fluxData.append([idTag, co2flux["F_o"], co2flux["slope"], co2flux["r2"]])
+        else:
+            interruptedIDtags.append(idTag)
     metadataColumns = ["idTag", "remark", "gasAnalyzer", "soilArea", "offset",
                        "chamberVolume", "gasAnalyzerVolume", "totalVolume",
                        "dateTime", "P_o", "T_o", "W_o"]
@@ -72,7 +84,7 @@ def extractData(jsonDictionary):
     if len(methaneFluxData) > 0:
         methaneFluxDF = pd.DataFrame(methaneFluxData, columns=methaneFluxColumns)
         co2fluxDF = co2fluxDF.merge(methaneFluxDF, "outer", "idTag")
-    return metadataDF, co2fluxDF
+    return metadataDF, co2fluxDF, interruptedIDtags
 
 
 def recalculateVolume(df):
