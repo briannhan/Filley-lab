@@ -11,6 +11,8 @@ a Licor gas analyzer, either a 7810 (which measures fluxes for both CO2 &
 methane) or an 870 (which only measures CO2 flux)
 """
 import pandas as pd
+import openpyxl
+import os
 
 
 def extractData(jsonDictionary):
@@ -84,7 +86,7 @@ def extractData(jsonDictionary):
     if len(methaneFluxData) > 0:
         methaneFluxDF = pd.DataFrame(methaneFluxData, columns=methaneFluxColumns)
         co2fluxDF = co2fluxDF.merge(methaneFluxDF, "outer", "idTag")
-    return metadataDF, co2fluxDF, interruptedIDtags
+    return {"metadata": metadataDF, "data": co2fluxDF, "interruptedMeasurements": interruptedIDtags}
 
 
 def recalculateVolume(df):
@@ -137,3 +139,83 @@ def recalculateFlux(df, gas):
     R = 8.31446261815324
     df[fluxColumn] = (df[slopeColumn] * df.P_o * df.totalVolume * 10)/(R * kelvin * df.soilArea)
     return df
+
+
+def plotAndCollar(df):
+    """
+    Takes either a dataframe of flux data or a dataframe of metadata (though I
+    intend to use this for the dataframe of metadata) and extracts the metadata
+    on plot (plot type and plot number) and collar for the flux measurement
+    from a measurement's idTag. This function assumes that the idTag is
+    formatted as
+    plottypePlotnumberCollar, e.g.
+    Grass15A
+
+    Parameters
+    ----------
+    df : Pandas dataframe
+        Dataframe containing either flux data or metadata. Dataframe must have
+        a column called idTag.
+
+    Returns
+    -------
+    The same dataframe with new columns containing plot type, plot number, and
+    collar
+    """
+    df["plotType"] = df["idTag"].str.extract(r"^([a-zA-Z]+)")
+    df["plotNumber"] = df["idTag"].str.extract(r"^[a-zA-Z]+([0-9]{1,2})")
+    df["collar"] = df["idTag"].str.extract(r"^[a-zA-Z]+[0-9]{1,2}([a-zA-Z])")
+
+    df["plotType"] = df["plotType"].str.capitalize()
+    df["collar"] = df["collar"].str.upper()
+    return df
+
+
+unitsMetadata1 = [["Units are as follows"],
+                  ["- CO2flux: micromole CO2 per square meter per second"],
+                  ["- CO2fluxSlope: ppm CO2 in dry air (or micromole CO2 per mole dry air) per second"],
+                  ["- methaneFlux: nanomole CH4 per square meter per second"],
+                  ["- methaneFluxSlope: ppb CH4 in dry air (or nanomole CH4 per mole dry air) per second"],
+                  ["- soilArea: cm squared"],
+                  ["- collar offset: cm"],
+                  ["- volumes (chamber, gas analyzer, and total): cm cubed"],
+                  ["- initial pressure (P_o): kPa"],
+                  ["- initial temperature (T_o): Celsius"],
+                  ["- initial fraction of water vapor in air (W_o): mmol water vapor per mole air (total air, not dry air)"],
+                  ["- dateTime: date and time written as yyyy-mm-dd HH:MM:SS where hour (HH) is written out of 24 hours rather than as AM or PM"]
+                  ]
+
+
+def exportCleanData(path, df, readMe):
+    """
+    Exports an Excel file of the cleaned flux data.
+
+    Parameters
+    ----------
+    path : path-like object
+        The file path for the data once the data is exported.
+    df : Pandas dataframe
+        Dataframe containing the cleaned flux data.
+    readMe : list of string
+        A list of string that will be the ReadMe tab in the output Excel file.
+
+    Returns
+    -------
+    None
+    """
+    if os.path.exists(path) is False:
+        wb = openpyxl.Workbook()
+        readMeTab = wb.active
+        readMeTab.title = "ReadMe"
+        for line in readMe:
+            readMeTab.append(line)
+        data = wb.create_sheet("Data")
+        data.append(df.columns.tolist())
+        dataList = df.to_numpy().tolist()
+        for line in dataList:
+            data.append(line)
+        wb.save(path)
+        print("File saved")
+    else:
+        print("File already exists")
+    return
