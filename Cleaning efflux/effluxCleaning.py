@@ -137,7 +137,8 @@ def recalculateFlux(df, gas):
         slopeColumn = "methaneFluxSlope"
     kelvin = df.T_o + 273.15
     R = 8.31446261815324
-    df[fluxColumn] = (df[slopeColumn] * df.P_o * df.totalVolume * 10)/(R * kelvin * df.soilArea)
+    dryFraction = 1 - (df.W_o/1000)
+    df[fluxColumn] = (df[slopeColumn] * df.P_o * df.totalVolume * dryFraction * 10)/(R * kelvin * df.soilArea)
     return df
 
 
